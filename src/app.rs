@@ -3,17 +3,14 @@ use winit::{
     application::ApplicationHandler, dpi::PhysicalSize, event::WindowEvent, window::Window,
 };
 
+use crate::graphics::{self, create_renderer_resources, render_frame, resize_renderer};
+
 #[derive(Default)]
 pub struct App {
     window: Option<Arc<Window>>,
     last_render_time: Option<Instant>,
-    // renderer: Option<Renderer<'static>>,
-    // gui_state: Option<egui_winit::State>,
-    // last_render_time: Option<Instant>,
-    // #[cfg(target_arch = "wasm32")]
-    // renderer_receiver: Option<Receiver<Renderer<'static>>>,
-    // last_size: (u32, u32),
-    // panels_visible: bool,
+    graphics: Option<graphics::Graphics<'static>>,
+    last_size: (u32, u32),
 }
 
 impl ApplicationHandler for App {
@@ -29,28 +26,29 @@ impl ApplicationHandler for App {
         let window_handle = Arc::new(window);
         self.window = Some(window_handle.clone());
 
-        // let (width, height) = (
-        //     window_handle.inner_size().width,
-        //     window_handle.inner_size().height,
-        // );
-        // let renderer =
-        //     pollster::block_on(
-        //         async move { Renderer::new(window_handle.clone(), width, height).await },
-        //     );
-        // self.renderer = Some(renderer);
-        //
+        let (width, height) = (
+            window_handle.inner_size().width,
+            window_handle.inner_size().height,
+        );
+        let graphics = pollster::block_on(async move {
+            create_renderer_resources(window_handle.clone(), width, height).await
+        });
+        self.graphics = Some(graphics);
+
         self.last_render_time = Some(Instant::now());
     }
 
     fn window_event(
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        let (Some(window), Some(last_render_time)) =
-            (self.window.as_ref(), self.last_render_time.as_mut())
-        else {
+        let (Some(window), Some(last_render_time), Some(graphics)) = (
+            self.window.as_ref(),
+            self.last_render_time.as_mut(),
+            self.graphics.as_mut(),
+        ) else {
             return;
         };
 
@@ -70,9 +68,8 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Resized(PhysicalSize { width, height }) => {
                 let (width, height) = ((width).max(1), (height).max(1));
-                log::info!("Resizing renderer surface to: ({width}, {height})");
-                // renderer.resize(width, height);
-                // self.last_size = (width, height);
+                resize_renderer(graphics, width, height);
+                self.last_size = (width, height);
             }
             WindowEvent::CloseRequested => {
                 log::info!("Close requested. Exiting...");
@@ -82,7 +79,7 @@ impl ApplicationHandler for App {
                 let now = Instant::now();
                 let _delta_time = now - *last_render_time;
                 *last_render_time = now;
-                // renderer.render_frame(delta_time);
+                render_frame(graphics);
             }
             _ => (),
         }
