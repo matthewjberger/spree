@@ -2,6 +2,7 @@ use app::App;
 
 mod app;
 mod graphics;
+mod world;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
