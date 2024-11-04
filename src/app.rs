@@ -1,16 +1,35 @@
+use crate::{
+    graphics::{self, create_renderer_resources, render_frame, resize_renderer},
+    world::World,
+};
 use std::{sync::Arc, time::Instant};
 use winit::{
     application::ApplicationHandler, dpi::PhysicalSize, event::WindowEvent, window::Window,
 };
 
-use crate::graphics::{self, create_renderer_resources, render_frame, resize_renderer};
+pub trait State {
+    fn initialize(&mut self, _world: &mut World) {}
+    fn receive_event(&mut self, _world: &mut World, _event: &WindowEvent) {}
+    fn update(&mut self, _world: &mut World) {}
+}
 
 #[derive(Default)]
 pub struct App {
+    world: World,
+    state: Option<Box<dyn State>>,
     window: Option<Arc<Window>>,
     last_render_time: Option<Instant>,
     graphics: Option<graphics::Graphics<'static>>,
     last_size: (u32, u32),
+}
+
+impl App {
+    pub fn new(state: impl State + 'static) -> Self {
+        Self {
+            state: Some(Box::new(state)),
+            ..Default::default()
+        }
+    }
 }
 
 impl ApplicationHandler for App {
@@ -21,6 +40,9 @@ impl ApplicationHandler for App {
         };
         if self.window.is_some() {
             return;
+        }
+        if let Some(state) = self.state.as_mut() {
+            state.initialize(&mut self.world);
         }
 
         let window_handle = Arc::new(window);
@@ -44,10 +66,12 @@ impl ApplicationHandler for App {
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        let (Some(window), Some(last_render_time), Some(graphics)) = (
+        let (Some(window), Some(last_render_time), Some(graphics), Some(state), world) = (
             self.window.as_ref(),
             self.last_render_time.as_mut(),
             self.graphics.as_mut(),
+            self.state.as_mut(),
+            &mut self.world,
         ) else {
             return;
         };
@@ -79,9 +103,14 @@ impl ApplicationHandler for App {
                 let now = Instant::now();
                 let _delta_time = now - *last_render_time;
                 *last_render_time = now;
+
                 render_frame(graphics);
+
+                state.update(world);
             }
-            _ => (),
+            _ => {
+                state.receive_event(world, &event);
+            }
         }
 
         window.request_redraw();
